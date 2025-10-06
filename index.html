@@ -96,6 +96,7 @@
             font-size: 16px;
             border: 2px solid rgba(255,255,255,0.2);
             backdrop-filter: blur(10px);
+            text-align: center;
         }
         
         .success {
@@ -145,32 +146,27 @@
             line-height: 1.5;
         }
         
-        .history-panel {
+        .fallback-panel {
             background: rgba(255,255,255,0.1);
             padding: 15px;
             border-radius: 15px;
             margin: 15px 0;
-            max-height: 200px;
-            overflow-y: auto;
-            text-align: left;
+            display: none;
         }
         
-        .history-item {
-            padding: 8px;
-            margin: 5px 0;
-            background: rgba(255,255,255,0.1);
-            border-radius: 8px;
-            font-size: 12px;
-            word-break: break-all;
-        }
-        
-        .format-badge {
-            display: inline-block;
-            background: rgba(255,255,255,0.2);
-            padding: 2px 8px;
+        .manual-input {
+            width: 100%;
+            padding: 12px;
             border-radius: 10px;
-            font-size: 10px;
-            margin-left: 5px;
+            border: 2px solid rgba(255,255,255,0.3);
+            background: rgba(255,255,255,0.1);
+            color: white;
+            font-size: 16px;
+            margin: 10px 0;
+        }
+        
+        .manual-input::placeholder {
+            color: rgba(255,255,255,0.7);
         }
     </style>
 </head>
@@ -194,16 +190,20 @@
         <div id="result" class="loading">
             🚀 Запуск камеры...
         </div>
-        
-        <div class="history-panel" id="history-panel" style="display: none;">
-            <strong>📋 История сканирований:</strong>
-            <div id="history-list"></div>
+
+        <!-- Fallback панель -->
+        <div class="fallback-panel" id="fallback-panel">
+            <h3>🔄 Альтернативные варианты:</h3>
+            <input type="text" class="manual-input" id="manual-input" 
+                   placeholder="Введите QR-код вручную...">
+            <button onclick="submitManualInput()">📨 Отправить код</button>
+            <button onclick="useExternalScanner()">📷 Открыть внешний сканер</button>
         </div>
         
         <div>
             <button onclick="startScanner()" id="start-btn">🎥 Запустить камеру</button>
             <button onclick="stopScanner()" id="stop-btn" disabled>⏹ Остановить</button>
-            <button onclick="toggleHistory()" id="history-btn">📋 История</button>
+            <button onclick="showFallback()" id="fallback-btn">🔄 Альтернатива</button>
             <button onclick="closeApp()">❌ Закрыть</button>
         </div>
     </div>
@@ -212,12 +212,8 @@
         // Глобальные переменные
         let stream = null;
         let video = null;
-        let canvas = null;
-        let context = null;
-        let scanInterval = null;
         let isScanning = false;
         let barcodeDetector = null;
-        let scanHistory = JSON.parse(localStorage.getItem('qrScanHistory') || '[]');
         
         // Инициализация Telegram WebApp
         function initTelegram() {
@@ -237,95 +233,42 @@
             resultDiv.className = type;
         }
         
-        // Вибрация (если поддерживается)
-        function vibrate(pattern = 200) {
-            if (navigator.vibrate) {
-                navigator.vibrate(pattern);
-            }
+        // Показать fallback опции
+        function showFallback() {
+            const fallbackPanel = document.getElementById('fallback-panel');
+            fallbackPanel.style.display = 'block';
         }
         
-        // Сохранение в историю
-        function saveToHistory(qrData, format = 'QR_CODE') {
-            const scanItem = {
-                data: qrData,
-                format: format,
-                timestamp: new Date().toLocaleString(),
-                id: Date.now()
-            };
+        // Ручной ввод кода
+        function submitManualInput() {
+            const manualInput = document.getElementById('manual-input');
+            const qrData = manualInput.value.trim();
             
-            scanHistory.unshift(scanItem);
-            // Сохраняем только последние 20 сканирований
-            if (scanHistory.length > 20) {
-                scanHistory = scanHistory.slice(0, 20);
-            }
-            
-            localStorage.setItem('qrScanHistory', JSON.stringify(scanHistory));
-            updateHistoryDisplay();
-        }
-        
-        // Обновление отображения истории
-        function updateHistoryDisplay() {
-            const historyList = document.getElementById('history-list');
-            const historyPanel = document.getElementById('history-panel');
-            
-            if (scanHistory.length === 0) {
-                historyList.innerHTML = '<div class="history-item">История пуста</div>';
+            if (!qrData) {
+                updateStatus('❌ Введите код', 'error');
                 return;
             }
             
-            historyList.innerHTML = scanHistory.map(item => `
-                <div class="history-item">
-                    <strong>${item.data.substring(0, 30)}${item.data.length > 30 ? '...' : ''}</strong>
-                    <span class="format-badge">${getFormatName(item.format)}</span>
-                    <br><small>${item.timestamp}</small>
-                </div>
-            `).join('');
-            
-            historyPanel.style.display = 'block';
+            handleQRScanSuccess(qrData, 'manual');
+            manualInput.value = '';
         }
         
-        // Получение читаемого имени формата
-        function getFormatName(format) {
-            const formatNames = {
-                'qr_code': 'QR',
-                'data_matrix': 'Data Matrix',
-                'pdf417': 'PDF417',
-                'upc_a': 'UPC-A',
-                'upc_e': 'UPC-E',
-                'ean_8': 'EAN-8',
-                'ean_13': 'EAN-13'
-            };
-            return formatNames[format] || format;
-        }
-        
-        // Переключение отображения истории
-        function toggleHistory() {
-            const historyPanel = document.getElementById('history-panel');
-            const historyBtn = document.getElementById('history-btn');
-            
-            if (historyPanel.style.display === 'none') {
-                historyPanel.style.display = 'block';
-                historyBtn.innerHTML = '📋 Скрыть историю';
-                updateHistoryDisplay();
-            } else {
-                historyPanel.style.display = 'none';
-                historyBtn.innerHTML = '📋 История';
-            }
+        // Внешний сканер
+        function useExternalScanner() {
+            updateStatus('📷 Откройте любой QR-сканер из магазина приложений', 'loading');
         }
         
         // Проверка поддержки Barcode Detection API
         function checkBarcodeSupport() {
             if ('BarcodeDetector' in window) {
                 console.log('BarcodeDetector поддерживается');
-                // Поддерживаемые форматы
-                const formats = [
-                    'qr_code', 'data_matrix', 'pdf417',
-                    'upc_a', 'upc_e', 'ean_8', 'ean_13'
-                ];
+                const formats = ['qr_code', 'data_matrix', 'pdf417', 'upc_a', 'upc_e', 'ean_8', 'ean_13'];
                 barcodeDetector = new BarcodeDetector({ formats: formats });
                 return true;
             } else {
                 console.log('BarcodeDetector не поддерживается');
+                updateStatus('❌ Автосканирование не поддерживается<br>Используйте альтернативные варианты ↓', 'error');
+                showFallback();
                 return false;
             }
         }
@@ -347,9 +290,6 @@
                 const hasBarcodeSupport = checkBarcodeSupport();
                 
                 if (!hasBarcodeSupport) {
-                    updateStatus('❌ Ваш браузер не поддерживает сканирование', 'error');
-                    startBtn.disabled = false;
-                    stopBtn.disabled = true;
                     return;
                 }
                 
@@ -395,7 +335,7 @@
                     console.log(`Найден ${format}:`, qrData);
                     
                     // Вибрация при успешном сканировании
-                    vibrate([100, 50, 100]);
+                    if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
                     
                     handleQRScanSuccess(qrData, format);
                     return;
@@ -416,16 +356,11 @@
             
             if (!qrData || qrData.trim() === '') {
                 updateStatus('❌ Пустой код', 'error');
-                setTimeout(() => {
-                    startScanner();
-                }, 2000);
+                setTimeout(() => startScanner(), 2000);
                 return;
             }
             
-            // Сохраняем в историю
-            saveToHistory(qrData, format);
-            
-            updateStatus(`✅ ${getFormatName(format)} распознан!<br>Отправляем...`, 'success');
+            updateStatus(`✅ ${format === 'manual' ? 'Код принят' : 'Код распознан'}!<br>Отправляем...`, 'success');
             
             // Отправляем данные в Telegram
             sendToTelegram(qrData);
@@ -445,20 +380,10 @@
                     // Для тестирования вне Telegram
                     updateStatus(`📨 Данные:<br><small>${data}</small>`, 'success');
                     console.log('Scan Data:', data);
-                    
-                    // Автоперезапуск через 3 секунды
-                    setTimeout(() => {
-                        startScanner();
-                    }, 3000);
                 }
             } catch (error) {
                 console.error('Ошибка отправки:', error);
                 updateStatus('❌ Ошибка отправки', 'error');
-                
-                // Перезапуск после ошибки
-                setTimeout(() => {
-                    startScanner();
-                }, 3000);
             }
         }
         
@@ -477,16 +402,12 @@
             }
             
             updateStatus(errorMessage, 'error');
+            showFallback();
         }
         
         // Остановка сканера
         function stopScanner() {
             isScanning = false;
-            
-            if (scanInterval) {
-                clearTimeout(scanInterval);
-                scanInterval = null;
-            }
             
             if (stream) {
                 stream.getTracks().forEach(track => track.stop());
@@ -518,11 +439,6 @@
             setTimeout(() => {
                 startScanner();
             }, 1000);
-        });
-        
-        // Очистка при закрытии
-        window.addEventListener('beforeunload', function() {
-            stopScanner();
         });
     </script>
 </body>
