@@ -217,7 +217,6 @@
         // Константы для оптимизации
         const SCAN_INTERVAL = 100; // 100ms между вызовами BarcodeDetector (вместо 500ms)
         const FAST_SCAN_INTERVAL = 33; // 33ms для резервного метода (~30fps)
-        const MAX_SCAN_ATTEMPTS = 3; // Максимум попыток сканирования одного кадра
         
         // Инициализация Telegram WebApp
         function initTelegram() {
@@ -443,25 +442,12 @@
                 
                 scanCount++;
                 
-                // Здесь можно добавить быстрый анализ изображения на наличие QR-кода
-                // Пока используем эмуляцию для демонстрации
-                if (Math.random() < 0.1) { // 10% шанс для теста
-                    const testData = generateTestQRData();
-                    console.log("QR код найден (canvas) за " + (Date.now() - startTime) + "ms");
-                    handleQRScan(testData);
-                }
+                // УБРАН ТЕСТОВЫЙ КОД, КОТОРЫЙ ИМИТИРОВАЛ СКАНИРОВАНИЕ
+                // Теперь сканер будет работать только с реальными QR-кодами
                 
             } catch (error) {
                 console.error('Ошибка canvas сканирования:', error);
             }
-        }
-        
-        // Генерация тестовых данных QR-кода
-        function generateTestQRData() {
-            const qrId = 'TEST' + Date.now().toString().slice(-4);
-            const userId = 1431061517;
-            const expiry = Math.floor(Date.now() / 1000) + 300;
-            return `DISCOUNT:${qrId}:USER:${userId}:TYPE:10%:EXP:${expiry}`;
         }
         
         // Обработка сканированного QR-кода
@@ -575,6 +561,14 @@
         document.addEventListener('DOMContentLoaded', function() {
             initTelegram();
             updatePerformanceInfo('⚡ Ускоренный сканер готов');
+            
+            // Автозапуск сканера если есть параметр autostart
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('autostart') === 'true') {
+                setTimeout(() => {
+                    startScanner();
+                }, 1000);
+            }
         });
         
         // Очистка при закрытии
