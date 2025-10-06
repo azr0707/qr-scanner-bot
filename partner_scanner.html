@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Сканер QR-кодов для партнеров</title>
+    <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
+    <style>
+        body { font-family: Arial; text-align: center; padding: 20px; }
+        #reader { width: 100%; max-width: 400px; margin: 20px auto; }
+        #result { padding: 20px; margin: 20px; border-radius: 10px; font-size: 18px; }
+        .success { background: green; color: white; }
+        .error { background: red; color: white; }
+    </style>
+</head>
+<body>
+    <h1>📱 Сканер QR-кодов</h1>
+    <p>Откройте эту страницу на телефоне и сканируйте QR-коды клиентов</p>
+    
+    <div id="reader"></div>
+    <div id="result"></div>
+    
+    <script>
+        function onScanSuccess(decodedText) {
+            document.getElementById('result').innerHTML = 
+                '✅ QR-код действителен!<br>Данные: ' + decodedText;
+            document.getElementById('result').className = 'success';
+            
+            // Можно отправить данные на сервер или показать инструкции
+        }
+        
+        function onScanFailure(error) {
+            // Ошибки игнорируем
+        }
+        
+        let html5QrcodeScanner = new Html5QrcodeScanner(
+            "reader", { fps: 10, qrbox: 250 }, false);
+        html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+    </script>
+</body>
+</html>

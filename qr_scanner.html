@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Сканер QR-кодов</title>
+    <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            text-align: center; 
+            padding: 20px; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            margin: 0;
+            min-height: 100vh;
+        }
+        .container { 
+            max-width: 100%; 
+            margin: 0 auto; 
+            background: white; 
+            padding: 20px; 
+            border-radius: 15px; 
+            color: #333;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        #reader { 
+            width: 100%; 
+            margin: 20px 0; 
+        }
+        #result { 
+            margin: 20px 0; 
+            padding: 20px; 
+            border-radius: 10px; 
+            font-size: 20px; 
+            font-weight: bold;
+            display: none;
+        }
+        .success { 
+            background: #4CAF50; 
+            color: white; 
+            display: block !important;
+        }
+        .error { 
+            background: #f44336; 
+            color: white; 
+            display: block !important;
+        }
+        button { 
+            background: #667eea; 
+            color: white; 
+            border: none; 
+            padding: 15px 25px; 
+            border-radius: 25px; 
+            font-size: 16px; 
+            cursor: pointer; 
+            margin: 10px;
+            width: 200px;
+        }
+        button:hover { 
+            background: #764ba2; 
+        }
+        h1 { margin-bottom: 10px; }
+        p { margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Сканер QR-кодов</h1>
+        <p>Наведите камеру на QR-код клиента</p>
+        
+        <div id="reader"></div>
+        
+        <div id="result"></div>
+        
+        <button onclick="startScanner()">🔄 Начать сканирование</button>
+        <button onclick="stopScanner()">⏹ Остановить</button>
+        <button onclick="closeApp()">❌ Закрыть</button>
+    </div>
+
+    <script>
+        let html5QrcodeScanner;
+        
+        // Инициализация Telegram Web App
+        if (window.Telegram && window.Telegram.WebApp) {
+            Telegram.WebApp.expand();
+            Telegram.WebApp.ready();
+        }
+        
+        function startScanner() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = '';
+            resultDiv.style.display = 'none';
+            
+            html5QrcodeScanner = new Html5QrcodeScanner(
+                "reader",
+                { 
+                    fps: 10, 
+                    qrbox: { width: 250, height: 250 },
+                    supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_QR_CODE]
+                },
+                false
+            );
+            
+            html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+        }
+        
+        function stopScanner() {
+            if (html5QrcodeScanner) {
+                html5QrcodeScanner.clear().catch(error => {
+                    console.error("Failed to clear scanner", error);
+                });
+            }
+        }
+        
+        function onScanSuccess(decodedText, decodedResult) {
+            stopScanner();
+            
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '✅ QR-код действителен!';
+            resultDiv.className = 'success';
+            
+            // Отправляем данные в Telegram бот
+            if (window.Telegram && window.Telegram.WebApp) {
+                Telegram.WebApp.sendData(decodedText);
+            }
+            
+            // Автоматически закрываем через 2 секунды
+            setTimeout(() => {
+                if (window.Telegram && window.Telegram.WebApp) {
+                    Telegram.WebApp.close();
+                }
+            }, 2000);
+        }
+        
+        function onScanFailure(error) {
+            // Игнорируем ошибки сканирования
+        }
+        
+        function closeApp() {
+            if (window.Telegram && window.Telegram.WebApp) {
+                Telegram.WebApp.close();
+            }
+        }
+        
+        // Автоматически запускаем сканер при загрузке
+        window.onload = startScanner;
+    </script>
+</body>
+</html>

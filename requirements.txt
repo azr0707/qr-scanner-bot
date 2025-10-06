@@ -1,0 +1,4 @@
+aiogram==2.25.1
+qrcode[pil]==7.4.2
+pillow==10.0.1
+aiohttp==3.8.5

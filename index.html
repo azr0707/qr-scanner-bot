@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Scanner - Discount Bot</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #ffffff;
+            text-align: center;
+        }
+        #reader {
+            width: 100%;
+            max-width: 400px;
+            margin: 20px auto;
+        }
+        #result {
+            padding: 15px;
+            margin: 20px;
+            border-radius: 10px;
+            display: none;
+        }
+        .success {
+            background: #4CAF50;
+            color: white;
+            display: block !important;
+        }
+    </style>
+</head>
+<body>
+    <h1>📱 Сканер QR-кодов</h1>
+    <p>Наведите камеру на QR-код</p>
+    <div id="reader"></div>
+    <div id="result"></div>
+
+    <script>
+        let tg = window.Telegram.WebApp;
+        tg.expand();
+        tg.ready();
+
+        function onScanSuccess(decodedText) {
+            document.getElementById('result').innerHTML = '✅ QR-код распознан!';
+            document.getElementById('result').className = 'success';
+            
+            tg.sendData(decodedText);
+            
+            setTimeout(() => {
+                tg.close();
+            }, 2000);
+        }
+
+        let html5QrcodeScanner = new Html5QrcodeScanner(
+            "reader", { fps: 10, qrbox: 250 }, false);
+        html5QrcodeScanner.render(onScanSuccess);
+    </script>
+</body>
+</html>
