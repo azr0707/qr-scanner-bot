@@ -3,60 +3,527 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QR Scanner - Discount Bot</title>
+    <title>QR Scanner - Discount System</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
     <style>
-        body {
-            font-family: Arial, sans-serif;
+        * {
             margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            min-height: 100vh;
             padding: 20px;
-            background: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .container {
+            width: 100%;
+            max-width: 100%;
             text-align: center;
         }
-        #reader {
+        
+        h1 {
+            margin: 10px 0;
+            font-size: 24px;
+        }
+        
+        .subtitle {
+            margin-bottom: 20px;
+            opacity: 0.9;
+        }
+        
+        #video-container {
             width: 100%;
             max-width: 400px;
-            margin: 20px auto;
+            height: 400px;
+            margin: 0 auto 20px;
+            border-radius: 20px;
+            overflow: hidden;
+            background: #000;
+            position: relative;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
         }
+        
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .scan-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 250px;
+            height: 250px;
+            border: 2px solid #00ff00;
+            border-radius: 15px;
+            pointer-events: none;
+        }
+        
+        .scan-line {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: #00ff00;
+            animation: scan 2s linear infinite;
+        }
+        
+        @keyframes scan {
+            0% { top: 0; }
+            100% { top: 100%; }
+        }
+        
         #result {
+            background: rgba(255,255,255,0.1);
             padding: 15px;
-            margin: 20px;
-            border-radius: 10px;
-            display: none;
+            border-radius: 15px;
+            margin: 15px 0;
+            min-height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            border: 2px solid rgba(255,255,255,0.2);
+            backdrop-filter: blur(10px);
         }
+        
         .success {
-            background: #4CAF50;
+            background: rgba(76, 175, 80, 0.3);
+            border-color: #4CAF50;
+        }
+        
+        .error {
+            background: rgba(244, 67, 54, 0.3);
+            border-color: #f44336;
+        }
+        
+        .loading {
+            background: rgba(33, 150, 243, 0.3);
+            border-color: #2196F3;
+        }
+        
+        button {
+            background: rgba(255,255,255,0.2);
+            border: 2px solid rgba(255,255,255,0.3);
             color: white;
-            display: block !important;
+            padding: 15px 25px;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 5px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            min-width: 140px;
+        }
+        
+        button:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .instructions {
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 15px;
+            margin: 15px 0;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        .history-panel {
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 15px;
+            margin: 15px 0;
+            max-height: 200px;
+            overflow-y: auto;
+            text-align: left;
+        }
+        
+        .history-item {
+            padding: 8px;
+            margin: 5px 0;
+            background: rgba(255,255,255,0.1);
+            border-radius: 8px;
+            font-size: 12px;
+            word-break: break-all;
+        }
+        
+        .format-badge {
+            display: inline-block;
+            background: rgba(255,255,255,0.2);
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 10px;
+            margin-left: 5px;
         }
     </style>
 </head>
 <body>
-    <h1>📱 Сканер QR-кодов</h1>
-    <p>Наведите камеру на QR-код</p>
-    <div id="reader"></div>
-    <div id="result"></div>
+    <div class="container">
+        <h1>📱 Сканер QR-кодов</h1>
+        <div class="subtitle">Система скидок и бонусов</div>
+        
+        <div class="instructions">
+            <strong>Поддерживаемые форматы:</strong><br>
+            📷 QR Code • 📄 Data Matrix • 📊 PDF417 • 🏷️ UPC/EAN
+        </div>
+        
+        <div id="video-container">
+            <video id="video" playsinline></video>
+            <div class="scan-overlay">
+                <div class="scan-line"></div>
+            </div>
+        </div>
+        
+        <div id="result" class="loading">
+            🚀 Запуск камеры...
+        </div>
+        
+        <div class="history-panel" id="history-panel" style="display: none;">
+            <strong>📋 История сканирований:</strong>
+            <div id="history-list"></div>
+        </div>
+        
+        <div>
+            <button onclick="startScanner()" id="start-btn">🎥 Запустить камеру</button>
+            <button onclick="stopScanner()" id="stop-btn" disabled>⏹ Остановить</button>
+            <button onclick="toggleHistory()" id="history-btn">📋 История</button>
+            <button onclick="closeApp()">❌ Закрыть</button>
+        </div>
+    </div>
 
     <script>
-        let tg = window.Telegram.WebApp;
-        tg.expand();
-        tg.ready();
-
-        function onScanSuccess(decodedText) {
-            document.getElementById('result').innerHTML = '✅ QR-код распознан!';
-            document.getElementById('result').className = 'success';
-            
-            tg.sendData(decodedText);
-            
-            setTimeout(() => {
-                tg.close();
-            }, 2000);
+        // Глобальные переменные
+        let stream = null;
+        let video = null;
+        let canvas = null;
+        let context = null;
+        let scanInterval = null;
+        let isScanning = false;
+        let barcodeDetector = null;
+        let scanHistory = JSON.parse(localStorage.getItem('qrScanHistory') || '[]');
+        
+        // Инициализация Telegram WebApp
+        function initTelegram() {
+            if (window.Telegram && window.Telegram.WebApp) {
+                Telegram.WebApp.ready();
+                Telegram.WebApp.expand();
+                console.log('Telegram WebApp инициализирован');
+                return true;
+            }
+            return false;
         }
-
-        let html5QrcodeScanner = new Html5QrcodeScanner(
-            "reader", { fps: 10, qrbox: 250 }, false);
-        html5QrcodeScanner.render(onScanSuccess);
+        
+        // Обновление статуса
+        function updateStatus(message, type = 'loading') {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = message;
+            resultDiv.className = type;
+        }
+        
+        // Вибрация (если поддерживается)
+        function vibrate(pattern = 200) {
+            if (navigator.vibrate) {
+                navigator.vibrate(pattern);
+            }
+        }
+        
+        // Сохранение в историю
+        function saveToHistory(qrData, format = 'QR_CODE') {
+            const scanItem = {
+                data: qrData,
+                format: format,
+                timestamp: new Date().toLocaleString(),
+                id: Date.now()
+            };
+            
+            scanHistory.unshift(scanItem);
+            // Сохраняем только последние 20 сканирований
+            if (scanHistory.length > 20) {
+                scanHistory = scanHistory.slice(0, 20);
+            }
+            
+            localStorage.setItem('qrScanHistory', JSON.stringify(scanHistory));
+            updateHistoryDisplay();
+        }
+        
+        // Обновление отображения истории
+        function updateHistoryDisplay() {
+            const historyList = document.getElementById('history-list');
+            const historyPanel = document.getElementById('history-panel');
+            
+            if (scanHistory.length === 0) {
+                historyList.innerHTML = '<div class="history-item">История пуста</div>';
+                return;
+            }
+            
+            historyList.innerHTML = scanHistory.map(item => `
+                <div class="history-item">
+                    <strong>${item.data.substring(0, 30)}${item.data.length > 30 ? '...' : ''}</strong>
+                    <span class="format-badge">${getFormatName(item.format)}</span>
+                    <br><small>${item.timestamp}</small>
+                </div>
+            `).join('');
+            
+            historyPanel.style.display = 'block';
+        }
+        
+        // Получение читаемого имени формата
+        function getFormatName(format) {
+            const formatNames = {
+                'qr_code': 'QR',
+                'data_matrix': 'Data Matrix',
+                'pdf417': 'PDF417',
+                'upc_a': 'UPC-A',
+                'upc_e': 'UPC-E',
+                'ean_8': 'EAN-8',
+                'ean_13': 'EAN-13'
+            };
+            return formatNames[format] || format;
+        }
+        
+        // Переключение отображения истории
+        function toggleHistory() {
+            const historyPanel = document.getElementById('history-panel');
+            const historyBtn = document.getElementById('history-btn');
+            
+            if (historyPanel.style.display === 'none') {
+                historyPanel.style.display = 'block';
+                historyBtn.innerHTML = '📋 Скрыть историю';
+                updateHistoryDisplay();
+            } else {
+                historyPanel.style.display = 'none';
+                historyBtn.innerHTML = '📋 История';
+            }
+        }
+        
+        // Проверка поддержки Barcode Detection API
+        function checkBarcodeSupport() {
+            if ('BarcodeDetector' in window) {
+                console.log('BarcodeDetector поддерживается');
+                // Поддерживаемые форматы
+                const formats = [
+                    'qr_code', 'data_matrix', 'pdf417',
+                    'upc_a', 'upc_e', 'ean_8', 'ean_13'
+                ];
+                barcodeDetector = new BarcodeDetector({ formats: formats });
+                return true;
+            } else {
+                console.log('BarcodeDetector не поддерживается');
+                return false;
+            }
+        }
+        
+        // Запуск камеры и сканирования
+        async function startScanner() {
+            if (isScanning) return;
+            
+            video = document.getElementById('video');
+            const startBtn = document.getElementById('start-btn');
+            const stopBtn = document.getElementById('stop-btn');
+            
+            try {
+                updateStatus('🔄 Запускаем камеру...', 'loading');
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                
+                // Проверяем поддержку BarcodeDetector
+                const hasBarcodeSupport = checkBarcodeSupport();
+                
+                if (!hasBarcodeSupport) {
+                    updateStatus('❌ Ваш браузер не поддерживает сканирование', 'error');
+                    startBtn.disabled = false;
+                    stopBtn.disabled = true;
+                    return;
+                }
+                
+                // Получаем доступ к камере
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'environment',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }
+                });
+                
+                // Подключаем поток к видео
+                video.srcObject = stream;
+                await video.play();
+                
+                isScanning = true;
+                updateStatus('✅ Камера активна<br>Сканируйте код', 'success');
+                
+                // Запускаем сканирование
+                scanWithBarcodeDetector();
+                
+            } catch (error) {
+                console.error('Ошибка камеры:', error);
+                handleCameraError(error);
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+            }
+        }
+        
+        // Сканирование с BarcodeDetector API
+        async function scanWithBarcodeDetector() {
+            if (!isScanning) return;
+            
+            try {
+                const barcodes = await barcodeDetector.detect(video);
+                
+                if (barcodes.length > 0) {
+                    const barcode = barcodes[0];
+                    const qrData = barcode.rawValue;
+                    const format = barcode.format;
+                    
+                    console.log(`Найден ${format}:`, qrData);
+                    
+                    // Вибрация при успешном сканировании
+                    vibrate([100, 50, 100]);
+                    
+                    handleQRScanSuccess(qrData, format);
+                    return;
+                }
+            } catch (error) {
+                console.error('Ошибка сканирования:', error);
+            }
+            
+            // Продолжаем сканирование
+            if (isScanning) {
+                requestAnimationFrame(scanWithBarcodeDetector);
+            }
+        }
+        
+        // Обработка успешного сканирования
+        function handleQRScanSuccess(qrData, format = 'QR_CODE') {
+            stopScanner();
+            
+            if (!qrData || qrData.trim() === '') {
+                updateStatus('❌ Пустой код', 'error');
+                setTimeout(() => {
+                    startScanner();
+                }, 2000);
+                return;
+            }
+            
+            // Сохраняем в историю
+            saveToHistory(qrData, format);
+            
+            updateStatus(`✅ ${getFormatName(format)} распознан!<br>Отправляем...`, 'success');
+            
+            // Отправляем данные в Telegram
+            sendToTelegram(qrData);
+        }
+        
+        // Отправка данных в Telegram
+        function sendToTelegram(data) {
+            try {
+                if (window.Telegram && window.Telegram.WebApp) {
+                    Telegram.WebApp.sendData(data);
+                    updateStatus('✅ Данные отправлены!<br>Закрытие...', 'success');
+                    
+                    setTimeout(() => {
+                        Telegram.WebApp.close();
+                    }, 2000);
+                } else {
+                    // Для тестирования вне Telegram
+                    updateStatus(`📨 Данные:<br><small>${data}</small>`, 'success');
+                    console.log('Scan Data:', data);
+                    
+                    // Автоперезапуск через 3 секунды
+                    setTimeout(() => {
+                        startScanner();
+                    }, 3000);
+                }
+            } catch (error) {
+                console.error('Ошибка отправки:', error);
+                updateStatus('❌ Ошибка отправки', 'error');
+                
+                // Перезапуск после ошибки
+                setTimeout(() => {
+                    startScanner();
+                }, 3000);
+            }
+        }
+        
+        // Обработка ошибок камеры
+        function handleCameraError(error) {
+            let errorMessage = '❌ Ошибка камеры';
+            
+            if (error.name === 'NotAllowedError') {
+                errorMessage = '❌ Доступ к камере запрещен<br>Разрешите доступ в настройках';
+            } else if (error.name === 'NotFoundError') {
+                errorMessage = '❌ Камера не найдена';
+            } else if (error.name === 'NotSupportedError') {
+                errorMessage = '❌ Браузер не поддерживает камеру';
+            } else {
+                errorMessage = `❌ Ошибка: ${error.message}`;
+            }
+            
+            updateStatus(errorMessage, 'error');
+        }
+        
+        // Остановка сканера
+        function stopScanner() {
+            isScanning = false;
+            
+            if (scanInterval) {
+                clearTimeout(scanInterval);
+                scanInterval = null;
+            }
+            
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+            
+            if (video) {
+                video.srcObject = null;
+            }
+            
+            document.getElementById('start-btn').disabled = false;
+            document.getElementById('stop-btn').disabled = true;
+        }
+        
+        // Закрытие приложения
+        function closeApp() {
+            stopScanner();
+            if (window.Telegram && window.Telegram.WebApp) {
+                Telegram.WebApp.close();
+            }
+        }
+        
+        // Автозапуск при загрузке
+        document.addEventListener('DOMContentLoaded', function() {
+            initTelegram();
+            updateStatus('🚀 Автозапуск камеры...', 'loading');
+            
+            // Автозапуск через 1 секунду
+            setTimeout(() => {
+                startScanner();
+            }, 1000);
+        });
+        
+        // Очистка при закрытии
+        window.addEventListener('beforeunload', function() {
+            stopScanner();
+        });
     </script>
 </body>
 </html>
