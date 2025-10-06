@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QR Scanner</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- Подключаем библиотеку для распознавания QR-кодов -->
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
     <style>
         * {
             margin: 0;
@@ -161,6 +163,18 @@
             margin: 10px 0;
             font-size: 14px;
         }
+
+        .debug-info {
+            background: rgba(0,0,0,0.3);
+            padding: 8px;
+            border-radius: 8px;
+            margin: 5px 0;
+            font-size: 11px;
+            font-family: monospace;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
     </style>
 </head>
 <body>
@@ -189,6 +203,10 @@
         <div id="performance" class="performance-info">
             ⚡ Производительность: инициализация...
         </div>
+
+        <div id="debug" class="debug-info" style="display: none;">
+            <!-- Отладочная информация -->
+        </div>
         
         <div id="validation-info" class="validation-info" style="display: none;">
             <!-- Здесь будет информация о валидации -->
@@ -213,10 +231,11 @@
         let lastScanTime = 0;
         let scanCount = 0;
         let startTime = 0;
+        let debugMode = true; // Включить отладочную информацию
         
         // Константы для оптимизации
-        const SCAN_INTERVAL = 100; // 100ms между вызовами BarcodeDetector (вместо 500ms)
-        const FAST_SCAN_INTERVAL = 33; // 33ms для резервного метода (~30fps)
+        const SCAN_INTERVAL = 300; // 300ms между вызовами для экономии батареи
+        const FAST_SCAN_INTERVAL = 200; // 200ms для резервного метода
         
         // Инициализация Telegram WebApp
         function initTelegram() {
@@ -241,6 +260,14 @@
             const perfDiv = document.getElementById('performance');
             perfDiv.innerHTML = message;
         }
+
+        // Обновление отладочной информации
+        function updateDebugInfo(message) {
+            if (!debugMode) return;
+            const debugDiv = document.getElementById('debug');
+            debugDiv.innerHTML = message;
+            debugDiv.style.display = 'block';
+        }
         
         // Показать информацию о валидации
         function showValidationInfo(message, isValid = false) {
@@ -255,12 +282,22 @@
         function checkBarcodeSupport() {
             if ('BarcodeDetector' in window) {
                 console.log('BarcodeDetector поддерживается');
-                barcodeDetector = new BarcodeDetector({ formats: ['qr_code'] });
-                return true;
+                try {
+                    barcodeDetector = new BarcodeDetector({ formats: ['qr_code'] });
+                    return true;
+                } catch (e) {
+                    console.log('BarcodeDetector создание не удалось:', e);
+                    return false;
+                }
             } else {
                 console.log('BarcodeDetector не поддерживается');
                 return false;
             }
+        }
+
+        // Проверка поддержки jsQR
+        function checkJsQRSupport() {
+            return typeof jsQR !== 'undefined';
         }
         
         // Оптимизированная функция проверки валидности QR-кода
@@ -273,7 +310,7 @@
             if (!qrData.startsWith('DISCOUNT:')) {
                 return { 
                     isValid: false, 
-                    message: '❌ Неверный формат QR-кода' 
+                    message: '❌ Неверный формат QR-кода. Должен начинаться с DISCOUNT:' 
                 };
             }
             
@@ -319,42 +356,55 @@
                 startTime = Date.now();
                 lastScanTime = 0;
                 
-                // Скрываем информацию о валидации
+                // Скрываем информацию о валидации и отладке
                 document.getElementById('validation-info').style.display = 'none';
+                document.getElementById('debug').style.display = 'none';
                 
-                // Проверяем поддержку BarcodeDetector
+                // Проверяем поддержку различных методов сканирования
                 const hasBarcodeSupport = checkBarcodeSupport();
-                updatePerformanceInfo('🔍 BarcodeDetector: ' + (hasBarcodeSupport ? '✅' : '❌'));
+                const hasJsQRSupport = checkJsQRSupport();
+                
+                updatePerformanceInfo(`🔍 Сканирование: ${hasBarcodeSupport ? 'BarcodeDetector' : hasJsQRSupport ? 'jsQR' : 'Canvas'}`);
+                updateDebugInfo(`Поддержка: BarcodeDetector: ${hasBarcodeSupport}, jsQR: ${hasJsQRSupport}`);
                 
                 // Получаем доступ к камере с оптимизированными настройками
                 stream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         facingMode: 'environment',
-                        width: { ideal: 1920, max: 1920 }, // Высокое разрешение для лучшего распознавания
-                        height: { ideal: 1080, max: 1080 },
-                        frameRate: { ideal: 30 } // Высокий FPS
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        frameRate: { ideal: 24 }
                     }
                 });
                 
                 // Подключаем поток к видео
                 video.srcObject = stream;
-                await video.play();
                 
-                // Создаем canvas для анализа (предварительная инициализация)
+                // Ждем пока видео будет готово
+                await new Promise((resolve) => {
+                    video.onloadedmetadata = () => {
+                        video.play().then(resolve);
+                    };
+                });
+                
+                // Создаем canvas для анализа
                 if (!canvas) {
                     canvas = document.createElement('canvas');
                     context = canvas.getContext('2d', { willReadFrequently: true });
                 }
                 
                 isScanning = true;
-                updateStatus('✅ Камера активна<br>⚡ Сканируйте QR-код', 'success');
+                updateStatus('✅ Камера активна<br>⚡ Наведите на QR-код', 'success');
                 updatePerformanceInfo('🎯 Сканирование запущено...');
                 
                 // Запускаем оптимизированное сканирование
                 if (hasBarcodeSupport) {
                     startOptimizedBarcodeScanning();
+                } else if (hasJsQRSupport) {
+                    startOptimizedJsQRScanning();
                 } else {
-                    startOptimizedCanvasScanning();
+                    updateStatus('❌ Браузер не поддерживает сканирование QR-кодов', 'error');
+                    stopScanner();
                 }
                 
             } catch (error) {
@@ -374,7 +424,7 @@
             // Используем requestAnimationFrame для плавности
             animationFrameId = requestAnimationFrame(startOptimizedBarcodeScanning);
             
-            // Сканируем чаще, но с интервалом чтобы не перегружать систему
+            // Сканируем с интервалом чтобы не перегружать систему
             if (now - lastScanTime > SCAN_INTERVAL) {
                 scanWithBarcodeDetector();
                 lastScanTime = now;
@@ -384,10 +434,11 @@
             if (now - startTime > 1000) {
                 const scansPerSecond = Math.round(scanCount / ((now - startTime) / 1000));
                 updatePerformanceInfo(`⚡ ${scansPerSecond} сканов/сек | BarcodeDetector`);
+                updateDebugInfo(`Сканы: ${scanCount} | FPS: ${scansPerSecond}`);
             }
         }
         
-        // ОПТИМИЗИРОВАННОЕ сканирование с BarcodeDetector
+        // Сканирование с BarcodeDetector
         async function scanWithBarcodeDetector() {
             if (!isScanning || !video.videoWidth) return;
             
@@ -397,56 +448,64 @@
                 
                 if (barcodes.length > 0) {
                     const qrData = barcodes[0].rawValue;
-                    console.log("QR код найден за " + (Date.now() - startTime) + "ms:", qrData);
+                    console.log("QR код найден:", qrData);
+                    updateDebugInfo(`Найден: ${qrData.substring(0, 50)}...`);
                     handleQRScan(qrData);
                 }
             } catch (error) {
-                console.error('Ошибка сканирования:', error);
+                console.error('Ошибка сканирования BarcodeDetector:', error);
             }
         }
-        
-        // ОПТИМИЗИРОВАННОЕ сканирование через Canvas (резервный метод)
-        function startOptimizedCanvasScanning() {
+
+        // ОПТИМИЗИРОВАННОЕ сканирование с jsQR
+        function startOptimizedJsQRScanning() {
             if (!isScanning) return;
-            
-            // Используем requestAnimationFrame для максимальной производительности
-            animationFrameId = requestAnimationFrame(startOptimizedCanvasScanning);
             
             const now = Date.now();
             
-            // Сканируем с высокой частотой (до 30fps)
+            animationFrameId = requestAnimationFrame(startOptimizedJsQRScanning);
+            
             if (now - lastScanTime > FAST_SCAN_INTERVAL) {
-                scanWithOptimizedCanvas();
+                scanWithJsQR();
                 lastScanTime = now;
             }
             
-            // Обновляем информацию о производительности
             if (now - startTime > 1000) {
                 const scansPerSecond = Math.round(scanCount / ((now - startTime) / 1000));
-                updatePerformanceInfo(`⚡ ${scansPerSecond} сканов/сек | Canvas`);
+                updatePerformanceInfo(`⚡ ${scansPerSecond} сканов/сек | jsQR`);
+                updateDebugInfo(`Сканы: ${scanCount} | FPS: ${scansPerSecond}`);
             }
         }
-        
-        // ОПТИМИЗИРОВАННОЕ сканирование через Canvas
-        function scanWithOptimizedCanvas() {
-            if (!isScanning || !video.videoWidth) return;
+
+        // Сканирование с jsQR
+        function scanWithJsQR() {
+            if (!isScanning || !video.videoWidth || !video.videoHeight) return;
             
             try {
-                // Устанавливаем оптимальный размер для скорости (меньше пикселей = быстрее)
-                const scale = 0.7; // Уменьшаем разрешение для скорости
-                canvas.width = video.videoWidth * scale;
-                canvas.height = video.videoHeight * scale;
+                // Устанавливаем размер canvas как у видео
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
                 
-                // Быстрое рисование с уменьшенным качеством
+                // Рисуем текущий кадр видео на canvas
                 context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                // Получаем ImageData для анализа
+                const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                
+                // Используем jsQR для распознавания QR-кода
+                const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                    inversionAttempts: "dontInvert",
+                });
                 
                 scanCount++;
                 
-                // УБРАН ТЕСТОВЫЙ КОД, КОТОРЫЙ ИМИТИРОВАЛ СКАНИРОВАНИЕ
-                // Теперь сканер будет работать только с реальными QR-кодами
-                
+                if (code) {
+                    console.log("QR код найден jsQR:", code.data);
+                    updateDebugInfo(`Найден: ${code.data.substring(0, 50)}...`);
+                    handleQRScan(code.data);
+                }
             } catch (error) {
-                console.error('Ошибка canvas сканирования:', error);
+                console.error('Ошибка сканирования jsQR:', error);
             }
         }
         
@@ -467,19 +526,19 @@
             if (validation.isValid) {
                 updateStatus(`✅ QR-код распознан!<br>⏱ ${scanDuration}ms`, 'success');
                 
-                // Быстрая отправка данных
+                // Отправка данных с задержкой для показа информации пользователю
                 setTimeout(() => {
                     sendToTelegram(qrData);
-                }, 500); // Уменьшили задержку
+                }, 1000);
             } else {
                 updateStatus('❌ Проблема с QR-кодом', 'error');
                 
-                // Быстрый перезапуск сканирования
+                // Перезапуск сканирования через 2 секунды
                 setTimeout(() => {
                     updateStatus('🔄 Готов к сканированию<br>Наведите на QR-код', 'loading');
                     document.getElementById('validation-info').style.display = 'none';
                     startScanner();
-                }, 1500); // Уменьшили задержку
+                }, 2000);
             }
         }
         
@@ -487,6 +546,7 @@
         function sendToTelegram(qrData) {
             try {
                 console.log('Отправка данных в Telegram:', qrData);
+                updateDebugInfo(`Отправка: ${qrData}`);
                 
                 if (window.Telegram && window.Telegram.WebApp) {
                     Telegram.WebApp.sendData(qrData);
@@ -494,18 +554,16 @@
                     
                     setTimeout(() => {
                         Telegram.WebApp.close();
-                    }, 1000);
+                    }, 1500);
                 } else {
                     // Для отладки вне Telegram
                     updateStatus(`📨 Данные отправлены:<br><small>${qrData}</small>`, 'success');
-                    
-                    setTimeout(() => {
-                        updateStatus('✅ Тест завершен!', 'success');
-                    }, 1000);
+                    updateDebugInfo('Режим отладки: данные не отправлены в Telegram');
                 }
             } catch (error) {
                 console.error('Ошибка отправки:', error);
                 updateStatus('❌ Ошибка отправки данных', 'error');
+                updateDebugInfo(`Ошибка: ${error.message}`);
             }
         }
         
@@ -514,17 +572,20 @@
             let errorMessage = '❌ Ошибка камеры';
             
             if (error.name === 'NotAllowedError') {
-                errorMessage = '❌ Доступ к камере запрещен<br>Разрешите доступ в настройках';
+                errorMessage = '❌ Доступ к камере запрещен<br>Разрешите доступ в настройках браузера';
             } else if (error.name === 'NotFoundError') {
                 errorMessage = '❌ Камера не найдена';
             } else if (error.name === 'NotSupportedError') {
                 errorMessage = '❌ Браузер не поддерживает камеру';
+            } else if (error.name === 'NotReadableError') {
+                errorMessage = '❌ Камера уже используется другим приложением';
             } else {
                 errorMessage = `❌ Ошибка: ${error.message}`;
             }
             
             updateStatus(errorMessage, 'error');
             updatePerformanceInfo('❌ Ошибка инициализации камеры');
+            updateDebugInfo(`Ошибка камеры: ${error.name} - ${error.message}`);
         }
         
         // Оптимизированная остановка сканера
@@ -561,13 +622,14 @@
         document.addEventListener('DOMContentLoaded', function() {
             initTelegram();
             updatePerformanceInfo('⚡ Ускоренный сканер готов');
+            updateDebugInfo('Инициализация завершена');
             
             // Автозапуск сканера если есть параметр autostart
             const urlParams = new URLSearchParams(window.location.search);
             if (urlParams.get('autostart') === 'true') {
                 setTimeout(() => {
                     startScanner();
-                }, 1000);
+                }, 500);
             }
         });
         
